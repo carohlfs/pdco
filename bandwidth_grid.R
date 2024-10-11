@@ -1,19 +1,16 @@
 #################################################
-# Stanton.R										#
+# bandwidth_grid.R								#
 #												#
-# This program generates parametric regressions	#
-# and constructs a Stanton plot of differences,	#
-# returns, and the non-parametric estimate of	#
-# volatility.									#
+# This program determines optimal bandwidth and #
+# runs non-parametric regressions.              #
 #												#
 # Chris Rohlfs, 9/26/2013						#
 # Updated with graph, 11/06/2013				#
+# Renamed & removed extraneous info, 10/11/2024 #
 #################################################
 
 require(data.table)
 require(parallel)
-require(scales)
-require(ggplot2)
 
 #### SUM OF EPANECHNIKOV K((XJ-XI)/H) OVER I ##########
 # This operation adds up the Epanechnikov kernel across
@@ -204,120 +201,4 @@ kernReg <- function(yVec,xVec,type,xEval=xVec) {
 	# values and the corresponding evaluation points
 	# for x.
 	return(predicted)
-}
-
-############## STANTON ESTIMATOR ############
-# This program implements the kernel regression
-# program on the square of depVar and depVar
-# itself, estimates the local variance based
-# upon those numbers, and then returns the square
-# root of that local variance.
-Stanton <- function(depVar,indVar,type) {
-
-	# determine max x-value and select 501
-	# evaluation points for x based upon those values.
-	maxX <- max(indVar,na.rm=TRUE)
-	minX <- min(indVar,na.rm=TRUE)
-	xEval <- seq(min(0,minX),maxX,(maxX -min(0,minX))/500)
-	
-
-	# call kernReg on the dep var itself.
-	depKern <- kernReg(depVar,indVar,type,xEval=xEval)
-	# call kernReg on squared dependent vairable.
-	stantonTable <- kernReg(depVar^2,indVar,type,xEval=xEval)
-
-	# merge in data on expected value of depVar.
-	setnames(stantonTable,"yhat","Ey2")
-	stantonTable$yhat <- depKern$yhat[match(stantonTable$x,depKern$x)]
-	
-	# compute variance, update to zero if negative,
-	# then take the square root.
-	stantonTable <- stantonTable[,sigma2:=Ey2-yhat^2]
-	stantonTable <- stantonTable[sigma2<0,sigma2:=0]
-	stantonTable <- stantonTable[,sigma:=sqrt(sigma2)]
-	
-	# only keep necessary variables
-	stantonTable <- data.table(sigma = stantonTable$sigma,x = stantonTable$x)
-	return(stantonTable)
-}
-
-# inputs to plotStanton are: y-variable (difference in spread),
-# x-variable (lagged spread), type ("AIC", "CrossV", or "Quick"),
-# graphTitle (displayed at top of graph), xTitle (label for x-axis),
-# fileName (where we save the graph), and the number of bins for
-# the histogram, which defaults at 200.
-
-# as a general rule, you should use AIC for smaller samples, CrossV
-# for larger samples (both are fine in either case), and Quick if
-# you're in a hurry and don't need it to be perfect.
-################# STANTON GRAPH ######################
-plotStanton <- function(yVar,xVar,type,graphTitle,xTitle="Lagged Spread (bps)",fileName,bins=125) {
-
-	# compute Stanton estimator.
-	stantonData <- Stanton(yVar,xVar,type)
-	# drop missing observations
-	stantonData <- stantonData[!is.nan(sigma),]
-	stantonData$est <- "Nonparametric\n(Stanton) Est. of\nVolatility\n"
-	
-	# we will have two additional lines
-	# on our graph: one for diffs and one for rets.
-	maxx <- max(xVar,na.rm=TRUE)
-	minx <- min(xVar,na.rm=TRUE)
-	xVarAdd <- seq(0, floor(minx), by=floor(minx)/100)
-	diffsData <- data.table(sigma = sd(yVar, na.rm=TRUE), x = c(xVarAdd, xVar), est = "Volatility\nin Differences\n")
-	retsData <- data.table(sigma = c(xVarAdd, xVar)*(sd(yVar, na.rm=TRUE)/sd(xVar, na.rm=TRUE)), x = c(xVarAdd, xVar), est = "Volatility\nin Returns\n")
-		
-	# now, we combine the data frames so that
-	# the legend will appear appropriately.
-	# this tip is taken from:
-	# http://stackoverflow.com/questions/6525864/multiple-lines-each-based-on-a-different-dataframe-in-ggplot2-automatic-colori
-	newData <- rbind(stantonData,diffsData,retsData)
-	
-	# color vector
-	cols <- c("forestgreen","firebrick2","dodgerblue3")
-	
-	# recover yVar name.
-	# yVarName <- varName(substitute(yVar))
-
-	# generate histogram data and bin width.
-	binw <- (maxx-minx)/bins
-	histX <- seq(from = minx + 0.5*binw,to = maxx -0.5*binw,by=binw)
-	count <- hist(xVar,breaks=seq(from=minx,to=maxx,by=binw),plot=FALSE)$counts
-	
-	# our scaling factor multiplies the histogram counts
-	# by max(stanton) and divides by the average of
-	# the max and mean of the counts -- so that the
-	# histogram counts are scaled downward more than they
-	# would be if we just used the max.
-	scalingFactor <- max(stantonData$sigma)/(0.5*max(count,na.rm=TRUE) + 0.5*mean(count,na.rm=TRUE))
-	histData <- data.table(xVar = xVar,scalingFactor = scalingFactor)
-	
-	mxx <- max(0,maxx)
-	mnx <- min(0,minx)
-	mxy <- 1.15*max(max(stantonData$sigma),scalingFactor*max(count))
-	
-	gg <- ggplot() + 
-		geom_histogram(mapping=aes(x = xVar,weight=scalingFactor),data=histData,color="black",fill="antiquewhite2",binwidth=binw) +
-		geom_line(aes(y=sigma,x=x,color=est),data=newData,size=1) +
-		scale_color_manual(values=cols,guide=guide_legend(title=NULL)) + 
-		labs(title=paste(graphTitle,"\n",sep='')) +
-		theme(title=element_text(size=18, color="black"), axis.text.x = element_text(color="black", size=20),
-			axis.text.y = element_text(color="black", size=20),axis.line=element_line(color="black",size=0.5),
-			panel.border = element_blank(), panel.background = element_blank(),
-			panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-			panel.border = element_blank(),
-			axis.title.x = element_text(color="black", size=18), axis.title.y = element_text(color="black", size=18),
-			legend.text = element_text(color="black",size=18),
-			legend.key = element_rect(fill=NA,color=NA)) +
-		geom_point(data=newData,aes(x=x,y=sigma,size="",shape=NA,size=10),color="black",fill="antiquewhite2") +
-		guides(size=guide_legend(paste("Histogram of\n",xTitle,sep=''),override.aes=list(shape=22,size=8),
-		title.theme=element_text(size=18,angle=0),title.position = "right")) +
-		scale_x_continuous(limits = c(mnx,mxx), labels = comma) +
-		scale_y_continuous(limits = c(0,mxy), labels = comma) + 
-		xlab(paste("\n",xTitle,sep='')) +
-		ylab("Volatility of Differences")
-		
-	png(filename=fileName,height=600,width=800)
-		print(gg)
-	dev.off()
 }
