@@ -20,7 +20,7 @@ The following programs are included in this repository:
 
 - `crossv_sequential.c`: A C program that performs a sorting-based grid search algorithm for optimal bandwidth selection without parallelism.
 - `crossv.cu`: A CUDA program that performs the same operation as `crossv_sequential.c` but utilizes GPU for faster execution.
-- `Stanton.R`: An R script for nonparametric regression, including multicore parallel cross-validation bandwidth selection using the `multicore` package.
+- `bandwidth_grid.R`: An R script for nonparametric regression, including multicore parallel cross-validation bandwidth selection using the `multicore` package.
 - `call.script.R`: An R script that generates random data and compares runtime performance of custom bandwidth estimation and the function from the `np` R package.
 
 ## Programs
@@ -31,7 +31,7 @@ C code that identifies the optimal bandwidth using a sorting-based grid search a
 ### crossv.cu
 CUDA code that performs the same operation as `crossv_sequential.c`, but uses GPU parallelism to reduce runtime. This program is designed to be compatible with older GPUs by using low compute capability.
 
-### Stanton.R
+### bandwidth_grid.R
 This R program performs nonparametric regression tasks, including bandwidth selection using multicore parallelism. It is called by `call.script.R` but can also be run independently.
 
 ### call.script.R
@@ -108,3 +108,7 @@ If you use this code or the results from the paper in your work, please cite the
 
 - **Chris Rohlfs** - [GitHub](https://github.com/carohlfs)
 - **Mohamed Zahran** - [Personal Website](https://www.mzahran.com)
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
